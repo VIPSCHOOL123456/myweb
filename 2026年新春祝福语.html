@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流星雨祝福弹窗</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: #000;
+            overflow: hidden;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+            position: relative;
+        }
+
+        /* 流星样式 */
+        .meteor {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(to right, transparent, rgba(255,255,255,0.9), transparent);
+            border-radius: 50%;
+            filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 12px #ffffff);
+            pointer-events: none;
+            z-index: 1;
+            opacity: 1;
+            animation: meteorFall var(--duration) linear forwards;
+        }
+
+        @keyframes meteorFall {
+            to {
+                transform: translate(var(--tx), var(--ty));
+                opacity: 0;
+            }
+        }
+
+        /* 祝福弹窗样式 */
+        .message-box {
+            position: absolute;
+            padding: 14px 22px;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 500;
+            color: #000;
+            max-width: 240px;
+            word-wrap: break-word;
+            z-index: 9999;
+            opacity: 0;
+            transform: scale(0.7);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            cursor: default;
+            user-select: none;
+        }
+
+        .message-box.show {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* 控制面板样式 */
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10000;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .control-panel button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .control-panel button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .control-panel label {
+            color: white;
+            font-size: 12px;
+            display: block;
+            margin: 5px 0;
+        }
+
+        .control-panel input[type="range"] {
+            width: 150px;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <div>
+            <button id="startBtn">开始弹窗</button>
+            <button id="stopBtn">暂停弹窗</button>
+            <button id="clearBtn">清除所有</button>
+        </div>
+        <div>
+            <label>弹窗频率: <span id="speedValue">中等</span></label>
+            <input type="range" id="speedControl" min="100" max="1000" value="400">
+        </div>
+        <div>
+            <label>弹窗数量: <span id="countValue">3</span>个/批</label>
+            <input type="range" id="countControl" min="1" max="10" value="3">
+        </div>
+    </div>
+
+    <script>
+        // ========== 配置参数 ==========
+        const config = {
+            meteor: {
+                interval: 120,      // 流星生成间隔(ms)
+                probability: 0.9   // 流星生成概率(90%)
+            },
+            message: {
+                interval: 400,      // 弹窗生成间隔(ms)
+                batchSize: 3,       // 每批弹窗数量
+                duration: 60000     // 自动停止时间(ms)
+            }
+        };
+
+        // ========== 祝福语库 ==========
+        const messages = [
+            "今天过得开心嘛", "保持微笑呀", "每天都要元气满满", "记得吃水果", "早点休息",
+            "好好爱自己", "梦想成真", "愿所有烦恼都消失", "天冷了，多穿衣服", "别熬夜",
+            "顺顺利利", "喝水哦~", "加油！", "一切都会好起来的", "你是最棒的！",
+            "世界因你而温柔", "慢慢来，别着急", "你值得被爱", "今天也很努力吧？", "星星会照亮你",
+            "坚持就是胜利", "相信自己", "勇敢面对挑战", "健康最重要", "幸福每一天",
+            "追逐你的梦想", "不要放弃希望", "快乐伴随你", "未来是属于你的", "每一步都是进步",
+            "你比想象中更强大", "阳光总在风雨后", "今天也要好好吃饭", "有人正在默默关心你", "你的努力终将开花",
+            "心怀善意，好运自来", "生活值得你热爱", "累了就休息一下吧", "你已经做得很好了", "明天会是崭新的一天",
+            "愿你被世界温柔以待", "小小的你，大大的光", "别怕，我在你身边", "笑容是你最美的妆容", "平安喜乐，万事胜意",
+            "愿你眼里有光，心中有爱", "生活虽难，但你很甜", "你值得所有美好", "今天也要闪闪发光", "温柔且坚定地走下去",
+            "保持好心情", "期待下一次见面", "你是我最想见的人", "今天也是爱你的一天", "想你了，不止今天",
+            "你值得所有的美好", "生活很苦，但你很甜", "愿你永远笑得灿烂", "我在原地，等你归来", "遇见你，是我最大的幸运",
+            "愿你心中有暖阳", "每一天都充满希望", "做自己的小太阳", "好运正在路上", "保持热爱，奔赴山海",
+            "所有的美好都会如期而至", "你是独一无二的存在", "今天也要加油呀", "相信明天会更好", "愿你被岁月温柔相待"
+        ];
+
+        // ========== 颜色库 ==========
+        const colors = [
+            "#FFD700", "#FF6F61", "#6ECEDA", "#7CFC00", "#DA70D6",
+            "#FFB6C1", "#00FA9A", "#FFA07A", "#98FB98", "#DDA0DD",
+            "#87CEEB", "#FFDAB9", "#FF6347", "#32CD32", "#BA55D3",
+            "#FF1493", "#00CED1", "#FF8C00", "#ADFF2F", "#9370DB",
+            "#FF69B4", "#00FF7F", "#FF4500", "#FFB5C5", "#AFEEEE",
+            "#FFDEAD", "#FF69B4", "#ADD8E6", "#F0E68C", "#FFA500",
+            "#FF00FF", "#00FFFF", "#00FF00", "#FFFF00", "#FF1493",
+            "#FF007F", "#7FFF00", "#FF7F50", "#66CDAA", "#FFD700"
+        ];
+
+        // ========== 状态变量 ==========
+        let active = false;
+        let messageInterval = null;
+        let meteorInterval = null;
+
+        // ========== DOM元素 ==========
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const speedControl = document.getElementById('speedControl');
+        const countControl = document.getElementById('countControl');
+        const speedValue = document.getElementById('speedValue');
+        const countValue = document.getElementById('countValue');
+
+        // ========== 流星雨系统 ==========
+        function createMeteor() {
+            const meteor = document.createElement('div');
+            meteor.className = 'meteor';
+            
+            // 随机流星长度
+            const length = 80 + Math.random() * 120;
+            meteor.style.width = `${length}px`;
+            
+            // 随机起始位置
+            const startX = -100 - Math.random() * 300;
+            const startY = -100 - Math.random() * 300;
+            meteor.style.left = `${startX}px`;
+            meteor.style.top = `${startY}px`;
+            
+            // 随机角度
+            const angleDeg = -20 + Math.random() * 90;
+            const angleRad = (angleDeg * Math.PI) / 180;
+            
+            // 计算移动距离
+            const diagonal = Math.sqrt(window.innerWidth ** 2 + window.innerHeight ** 2);
+            const distance = diagonal * 1.3;
+            const tx = distance * Math.cos(angleRad);
+            const ty = distance * Math.sin(angleRad);
+            
+            // 随机动画时长
+            const duration = 0.7 + Math.random() * 0.7;
+            
+            // 设置CSS变量
+            meteor.style.setProperty('--tx', `${tx}px`);
+            meteor.style.setProperty('--ty', `${ty}px`);
+            meteor.style.setProperty('--duration', `${duration}s`);
+            
+            document.body.appendChild(meteor);
+            
+            // 动画结束后移除元素
+            setTimeout(() => {
+                if (meteor.parentNode) meteor.remove();
+            }, duration * 1000 + 200);
+        }
+
+        function startMeteorRain() {
+            if (meteorInterval) clearInterval(meteorInterval);
+            
+            meteorInterval = setInterval(() => {
+                if (Math.random() > (1 - config.meteor.probability)) {
+                    createMeteor();
+                }
+            }, config.meteor.interval);
+        }
+
+        // ========== 祝福弹窗系统 ==========
+        function createMessage() {
+            if (!active) return;
+            
+            const msg = messages[Math.floor(Math.random() * messages.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            const box = document.createElement('div');
+            box.className = 'message-box';
+            box.textContent = msg;
+            box.style.backgroundColor = color;
+            
+            // 随机位置（避开边缘）
+            const x = Math.random() * (window.innerWidth - 260);
+            const y = Math.random() * (window.innerHeight - 120);
+            box.style.left = `${x}px`;
+            box.style.top = `${y}px`;
+            
+            // 随机内边距
+            const padY = 10 + Math.floor(Math.random() * 8);
+            const padX = 18 + Math.floor(Math.random() * 12);
+            box.style.padding = `${padY}px ${padX}px`;
+            
+            // 随机字体大小
+            const fontSize = 15 + Math.random() * 3;
+            box.style.fontSize = `${fontSize}px`;
+            
+            // 随机圆角
+            const radius = 10 + Math.floor(Math.random() * 8);
+            box.style.borderRadius = `${radius}px`;
+            
+            document.body.appendChild(box);
+            
+            // 显示弹窗
+            setTimeout(() => box.classList.add('show'), 10);
+            
+            // 5秒后淡出并移除
+            setTimeout(() => {
+                box.classList.remove('show');
+                setTimeout(() => {
+                    if (box.parentNode) box.remove();
+                }, 300);
+            }, 5000);
+        }
+
+        function startMessageRain() {
+            if (messageInterval) clearInterval(messageInterval);
+            active = true;
+            
+            messageInterval = setInterval(() => {
+                for (let i = 0; i < config.message.batchSize; i++) {
+                    setTimeout(createMessage, i * 30); // 错开生成时间
+                }
+            }, config.message.interval);
+            
+            // 60秒后自动停止
+            setTimeout(() => {
+                stopMessageRain();
+            }, config.message.duration);
+        }
+
+        function stopMessageRain() {
+            active = false;
+            if (messageInterval) {
+                clearInterval(messageInterval);
+                messageInterval = null;
+            }
+        }
+
+        function clearAllMessages() {
+            document.querySelectorAll('.message-box').forEach(box => {
+                box.classList.remove('show');
+                setTimeout(() => {
+                    if (box.parentNode) box.remove();
+                }, 300);
+            });
+        }
+
+        // ========== 事件监听 ==========
+        startBtn.addEventListener('click', () => {
+            startMessageRain();
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+        });
+
+        stopBtn.addEventListener('click', () => {
+            stopMessageRain();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+
+        clearBtn.addEventListener('click', clearAllMessages);
+
+        speedControl.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            config.message.interval = value;
+            
+            // 更新显示文本
+            if (value <= 200) speedValue.textContent = '很快';
+            else if (value <= 400) speedValue.textContent = '中等';
+            else speedValue.textContent = '较慢';
+            
+            if (active) {
+                stopMessageRain();
+                startMessageRain();
+            }
+        });
+
+        countControl.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            config.message.batchSize = value;
+            countValue.textContent = value;
+            
+            if (active) {
+                stopMessageRain();
+                startMessageRain();
+            }
+        });
+
+        // 点击页面任意位置清除弹窗
+        document.body.addEventListener('click', (e) => {
+            if (e.target.className !== 'message-box' && 
+                !e.target.closest('.control-panel')) {
+                clearAllMessages();
+            }
+        });
+
+        // ========== 初始化 ==========
+        window.addEventListener('load', () => {
+            startMeteorRain();
+            stopBtn.disabled = true;
+            
+            // 页面加载3秒后自动开始弹窗
+            setTimeout(() => {
+                startMessageRain();
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            }, 3000);
+        });
+
+        // 窗口大小变化时调整
+        window.addEventListener('resize', () => {
+            // 可以添加响应式调整逻辑
+        });
+    </script>
+</body>
+</html>
